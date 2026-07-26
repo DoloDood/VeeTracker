@@ -13,7 +13,7 @@
     "react": "latest",
     "react-dom": "latest",
     "next-auth": "beta",
-    "@vercel/postgres": "latest",
+    "pg": "latest",
     "@vercel/blob": "latest"
   }
 }
