@@ -1,16 +1,16 @@
 import { redirect } from 'next/navigation';
-import { auth } from '../../auth.js';
+import { getCurrentUser } from '../../lib/supabase/server.js';
 import AppNav from '../components/AppNav.js';
 import SearchTool from './SearchTool.js';
 
 export default async function SearchPage() {
-  const session = await auth();
-  if (!session) redirect('/login');
-  if (!session.user.username) redirect('/onboarding');
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
+  if (!user.username) redirect('/onboarding');
 
   return (
     <>
-      <AppNav username={session.user.username} />
+      <AppNav username={user.username} />
       <SearchTool />
     </>
   );

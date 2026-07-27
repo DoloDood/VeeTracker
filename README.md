@@ -1,133 +1,107 @@
 # VeeFriends Lister — full app
 
-Google sign-in, usernames, a persistent collection, and direct-to-eBay
-publishing, all in one Next.js app. Deploys free on Vercel from GitHub.
+Google sign-in (via Supabase Auth), usernames, a persistent collection, and
+direct-to-eBay publishing, all in one Next.js app. Deploys free on Vercel
+from GitHub.
 
-This replaces the earlier Claude-artifact tool and the standalone
-`veefriends-ebay-lister` backend — everything now lives here, in one place,
-because Google OAuth needs a real domain to redirect back to (an artifact
-can't provide that), and because being one app means "List to eBay" can
-actually publish instead of just generating a JSON payload to copy elsewhere.
+## Why Supabase Auth instead of a custom login system
+
+An earlier version of this hand-rolled Google OAuth using Auth.js and a
+custom database table. That was unnecessary complexity — Supabase already
+has Google sign-in built in, and it's what you'd used successfully before.
+This version uses it directly: less code, fewer environment variables,
+fewer places for something to go subtly wrong.
 
 ## Architecture
 
 ```
 Browser
   │
-  ├─ /login, /onboarding          Google sign-in, pick a username
+  ├─ /login                        "Sign in with Google" (Supabase Auth)
+  ├─ /auth/callback                exchanges the OAuth code for a session
+  ├─ /onboarding                   pick a username (stored in `profiles`)
   ├─ /search                       the search/listing generator (client-side)
   ├─ /collection                   your saved items, grouped Owned/Listed/Sold
   ├─ /settings/ebay                connect YOUR eBay seller account, set policies
   │
-  └─ API routes (all session-scoped to the signed-in user)
-       /api/collection, /api/price-log     -> Postgres
+  └─ API routes (all check the Supabase session first)
+       /api/collection, /api/price-log     -> Postgres, via lib/db.js
        /api/ebay/auth-start, auth-callback -> per-user eBay OAuth
        /api/ebay/upload-image              -> Vercel Blob
        /api/ebay/list-item                 -> the real publish call
 ```
 
-Each signed-in user connects **their own** eBay seller account (their own
-OAuth grant, their own refresh token, stored in Postgres against their user
-row). The app itself only has one shared identity with eBay — its Client
-ID/Secret — same as any real multi-user integration works. This means it's
-already structured for "open it up to other people later," even though
-you're the only user today.
+Authentication (Supabase Auth) and app data (direct Postgres via `pg`) are
+deliberately kept separate: Supabase tells us *who* is signed in, and our
+own database — keyed by that same user ID — holds everything else. eBay
+tokens and business policies are still per-user, stored in Postgres, so this
+is already structured for "open it up to other people later."
 
-## Prerequisites checklist
+## If you're migrating from an earlier version
 
-- [ ] GitHub account, Vercel account (both free)
-- [ ] Google Cloud Console project (free) — for Sign in with Google
-- [ ] eBay Developer account approved (you have this)
-- [ ] eBay Business Policies set up in Seller Hub (payment/return/fulfillment)
-      — required before publishing works, independent of any of this code
+Run `db/migrate-to-supabase-auth.sql` in Supabase's SQL Editor first (it
+drops the old tables — they only had test data), then run `db/schema.sql`
+right after.
 
 ## Setup
 
-### 1. Push to GitHub, import into Vercel
+### 1. GitHub Desktop, as before
 
-Same as before — new repo, push these files, Vercel → Add New → Project →
-import it. Next.js is auto-detected, no config needed.
+Delete your local project folder entirely, unzip this fresh copy, and in
+GitHub Desktop it'll show every changed/added/removed file. Commit
+("switch to Supabase Auth"), push.
 
-### 2. Add storage
+### 2. Enable Google sign-in — in Supabase, not Vercel
 
-In the Vercel project → Storage tab:
-- Add **Postgres** (this auto-injects `POSTGRES_URL` and related env vars)
-- Add **Blob** (auto-injects `BLOB_READ_WRITE_TOKEN`)
+- Supabase dashboard → **Authentication → Providers** → find **Google** →
+  toggle it on
+- Paste in the **same Client ID and Client Secret** you already created in
+  Google Cloud Console
+- Supabase shows you a **Callback URL** on this same screen (something like
+  `https://xxxx.supabase.co/auth/v1/callback`) — copy it
+- Go back to **Google Cloud Console → Credentials** → your existing OAuth
+  Client → **Authorized redirect URIs** → **Add URI** → paste that Supabase
+  callback URL → Save
 
-Neither needs manual key-copying — Vercel wires them in automatically.
+### 3. Get your Supabase API keys
 
-### 3. Run the schema
+Supabase dashboard → **Project Settings → API**. Copy the **Project URL**
+and the **anon / public key**.
 
-Vercel → your Postgres database → Query (or connect with `psql` using the
-connection string Vercel gives you) → paste in and run `db/schema.sql`.
+### 4. Set environment variables in Vercel
 
-### 4. Google OAuth
+Settings → Environment Variables → add:
 
-[Google Cloud Console](https://console.cloud.google.com) → APIs & Services →
-Credentials → Create OAuth Client ID → Web application. Set the authorized
-redirect URI to:
+| Name | Value |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | the Project URL from step 3 |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | the anon key from step 3 |
 
-```
-https://YOUR-PROJECT.vercel.app/api/auth/callback/google
-```
+The old `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` / `AUTH_SECRET` variables
+aren't used anymore — safe to delete them, or just leave them, doesn't
+matter either way.
 
-Copy the Client ID and Client Secret into Vercel's environment variables as
-`AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`. Also set `AUTH_SECRET` (generate
-with `npx auth secret` or `openssl rand -base64 32`).
+### 5. Redeploy, test
 
-### 5. eBay — Sandbox first
+Deployments → **⋯** → Redeploy. Visit your site, sign in with Google,
+pick a username, land on the search tool.
 
-Same idea as before, but now scoped per-user instead of one set of env vars:
+## eBay setup
 
-- Application Keys page → generate a **Sandbox keyset** → set
-  `EBAY_CLIENT_ID_SANDBOX` / `EBAY_CLIENT_SECRET_SANDBOX` in Vercel
-- User Access Tokens → Register a new Sandbox test user (`TESTUSER_...`)
-- Create an RuName with its Accept URL set to
-  `https://YOUR-PROJECT.vercel.app/api/ebay/auth-callback` → set as
-  `EBAY_RUNAME_SANDBOX`
-- Redeploy
-
-### 6. Sign in and connect eBay
-
-Visit your app, sign in with Google, pick a username, go to
-**Settings → eBay**, click **Connect Sandbox**, log in as your `TESTUSER_`
-account and approve. You'll land back on the settings page connected.
-
-### 7. Business policies
-
-While logged into `sandbox.ebay.com` as your test seller, set up payment/
-return/fulfillment policies and an inventory location (same requirement as
-before — the Sell API won't publish without them). Enter the resulting IDs
-into the Business Policies form on the Settings page.
-
-### 8. Test it
-
-Add something to your collection from `/search`, go to `/collection`, click
-**List to eBay**, fill in a price/category/photos, publish. You'll get back
-a `viewUrl` — open it to see the listing live on Sandbox eBay.
-
-### 9. Production, when you're ready
-
-Repeat steps 5–7 with a **Production** keyset, a second RuName, and
-`EBAY_CLIENT_ID_PRODUCTION` / `EBAY_CLIENT_SECRET_PRODUCTION` /
-`EBAY_RUNAME_PRODUCTION`. Click **Connect Production** on the Settings page.
-Same code, real eBay — nothing else changes.
+Unchanged from before — see the walkthrough you already have for Sandbox
+keys, RuName, business policies, and the Settings → eBay page in the app.
 
 ## Things worth knowing
 
 - **eBay category IDs and condition values** — still on you to look up the
   right ones for your item type (Taxonomy API's `getCategorySuggestions`, or
-  check what a comparable existing listing uses). Publishing will fail
-  loudly with a real eBay error if these are wrong, which is useful signal,
-  not a bug in this code.
+  check what a comparable existing listing uses).
 - **Refresh tokens are stored as plain text** in Postgres for this
-  concept/personal-use phase. Fine for one user (you). Before opening this
-  to other people, encrypt that column (e.g. via `pgcrypto`, or encrypt/
-  decrypt in `lib/ebay.js` with a key from an env var) — flagging this now
-  so it doesn't get forgotten later.
-- **This hasn't run against a live eBay account yet** — I wrote it against
-  eBay's current documented API shape and have no way to execute it from
-  here. Sandbox exists exactly to catch that gap safely. Expect a debugging
-  pass together the first time you run the real flow end-to-end.
-- I dropped the artifact's "Recent" strip — the Collection page now serves
-  that purpose better (it's permanent, not a rolling list of the last 20).
+  concept/personal-use phase. Fine for one user. Encrypt that column before
+  opening this to other people.
+- **No session-refresh middleware yet** — Supabase sessions are checked
+  through server components directly rather than refreshed in middleware,
+  which is simpler but means you may occasionally need to sign in again
+  after a session expires (roughly hourly, per Supabase's default). Fine for
+  personal use; worth adding proper middleware-based refresh before this
+  goes public.

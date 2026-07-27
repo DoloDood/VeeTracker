@@ -12,7 +12,8 @@
     "next": "latest",
     "react": "latest",
     "react-dom": "latest",
-    "next-auth": "beta",
+    "@supabase/supabase-js": "latest",
+    "@supabase/ssr": "latest",
     "pg": "latest",
     "@vercel/blob": "latest"
   }

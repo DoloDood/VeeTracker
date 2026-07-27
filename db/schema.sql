@@ -1,17 +1,16 @@
--- Run this once against your Vercel Postgres database before first use
--- (Vercel dashboard -> Storage -> your DB -> Query, or via `psql`).
+-- Run this once against your Supabase database (SQL Editor) before first use.
+-- Supabase Auth manages its own `auth.users` table automatically - we only
+-- need a `profiles` table to hold the app-specific username, linked 1:1.
 
-CREATE TABLE IF NOT EXISTS app_users (
-  id             SERIAL PRIMARY KEY,
-  google_sub     TEXT UNIQUE NOT NULL,
-  email          TEXT UNIQUE NOT NULL,
+CREATE TABLE IF NOT EXISTS profiles (
+  id             UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   username       TEXT UNIQUE,
   created_at     TIMESTAMPTZ DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS collection_items (
   id             SERIAL PRIMARY KEY,
-  user_id        INTEGER NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+  user_id        UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   item_key       TEXT NOT NULL,
   character      TEXT NOT NULL,
   category_id    TEXT NOT NULL,
@@ -27,7 +26,7 @@ CREATE TABLE IF NOT EXISTS collection_items (
 
 CREATE TABLE IF NOT EXISTS price_logs (
   id             SERIAL PRIMARY KEY,
-  user_id        INTEGER NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+  user_id        UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   item_key       TEXT NOT NULL,
   price          NUMERIC(10,2) NOT NULL,
   logged_at      TIMESTAMPTZ DEFAULT now()
@@ -37,7 +36,7 @@ CREATE TABLE IF NOT EXISTS price_logs (
 -- the concept/personal-use phase — see README for the note on encrypting this
 -- before opening the app up to other people.
 CREATE TABLE IF NOT EXISTS ebay_connections (
-  user_id                 INTEGER PRIMARY KEY REFERENCES app_users(id) ON DELETE CASCADE,
+  user_id                 UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   environment             TEXT NOT NULL DEFAULT 'sandbox',   -- sandbox | production
   refresh_token           TEXT,
   fulfillment_policy_id   TEXT,
@@ -52,7 +51,19 @@ CREATE TABLE IF NOT EXISTS ebay_connections (
 -- (the `state` param eBay bounces back to us).
 CREATE TABLE IF NOT EXISTS ebay_oauth_state (
   state          TEXT PRIMARY KEY,
-  user_id        INTEGER NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+  user_id        UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   environment    TEXT NOT NULL DEFAULT 'sandbox',
   created_at     TIMESTAMPTZ DEFAULT now()
 );
+
+-- These tables are only ever accessed by our own server-side code (using the
+-- direct Postgres connection, not the browser-facing Supabase client), which
+-- already checks who's signed in via Supabase Auth before running any query.
+-- Row Level Security doesn't apply to that connection either way, so no
+-- policies are needed here — but RLS is left enabled with no policies as a
+-- safety net in case anything ever queries these tables a different way.
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE collection_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE price_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ebay_connections ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ebay_oauth_state ENABLE ROW LEVEL SECURITY;

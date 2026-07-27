@@ -1,9 +1,9 @@
 import { redirect } from 'next/navigation';
-import { auth } from '../auth.js';
+import { getCurrentUser } from '../lib/supabase/server.js';
 
 export default async function HomePage() {
-  const session = await auth();
-  if (!session) redirect('/login');
-  if (!session.user.username) redirect('/onboarding');
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
+  if (!user.username) redirect('/onboarding');
   redirect('/search');
 }

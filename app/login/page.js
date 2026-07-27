@@ -1,13 +1,13 @@
-import { redirect } from 'next/navigation';
-import { auth, signIn } from '../../auth.js';
+'use client';
+import { createClient } from '../../lib/supabase/client.js';
 
-export default async function LoginPage() {
-  const session = await auth();
-  if (session) redirect('/');
-
-  async function googleSignIn() {
-    'use server';
-    await signIn('google', { redirectTo: '/' });
+export default function LoginPage() {
+  async function handleSignIn() {
+    const supabase = createClient();
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: `${window.location.origin}/auth/callback` },
+    });
   }
 
   return (
@@ -16,17 +16,15 @@ export default async function LoginPage() {
         VF LISTER
       </div>
       <h1 style={{ fontSize: 30, fontWeight: 800, marginBottom: 30 }}>Track your collection. List it to eBay.</h1>
-      <form action={googleSignIn}>
-        <button
-          type="submit"
-          style={{
-            fontSize: 15, fontWeight: 600, padding: '14px 24px', borderRadius: 12,
-            border: 'none', background: '#5b5fef', color: '#fff', cursor: 'pointer', width: '100%',
-          }}
-        >
-          Sign in with Google
-        </button>
-      </form>
+      <button
+        onClick={handleSignIn}
+        style={{
+          fontSize: 15, fontWeight: 600, padding: '14px 24px', borderRadius: 12,
+          border: 'none', background: '#5b5fef', color: '#fff', cursor: 'pointer', width: '100%',
+        }}
+      >
+        Sign in with Google
+      </button>
     </main>
   );
 }

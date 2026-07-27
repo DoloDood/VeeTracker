@@ -2,12 +2,12 @@
 // Body: { "filename": "alert-ape.jpg", "dataBase64": "<base64-encoded image bytes>" }
 // Uploads to Vercel Blob (eBay's Inventory API requires public HTTPS image
 // URLs, not raw file uploads) and returns the public URL.
-import { auth } from '../../../../auth.js';
+import { getCurrentUser } from '../../../../lib/supabase/server.js';
 import { put } from '@vercel/blob';
 
 export async function POST(req) {
-  const session = await auth();
-  if (!session?.user?.appUserId) {
+  const user = await getCurrentUser();
+  if (!user) {
     return Response.json({ error: 'Not signed in' }, { status: 401 });
   }
 
@@ -18,7 +18,7 @@ export async function POST(req) {
     }
     const buffer = Buffer.from(dataBase64, 'base64');
     // Namespace by user so filenames can't collide across accounts.
-    const blob = await put(`u${session.user.appUserId}/${filename}`, buffer, {
+    const blob = await put(`u${user.id}/${filename}`, buffer, {
       access: 'public',
       addRandomSuffix: true,
     });

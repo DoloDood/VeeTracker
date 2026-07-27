@@ -1,11 +1,11 @@
 import { redirect } from 'next/navigation';
-import { auth } from '../../auth.js';
+import { getCurrentUser } from '../../lib/supabase/server.js';
 import UsernameForm from './UsernameForm.js';
 
 export default async function OnboardingPage() {
-  const session = await auth();
-  if (!session) redirect('/login');
-  if (session.user.username) redirect('/search');
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
+  if (user.username) redirect('/search');
 
   return (
     <main style={{ maxWidth: 420, margin: '0 auto', padding: '80px 20px', textAlign: 'center' }}>

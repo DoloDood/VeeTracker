@@ -3,16 +3,16 @@
 // Publishes a live eBay listing using the signed-in user's own connected
 // eBay account (their stored refresh token + business policies), via the
 // three-call Sell API flow: createOrReplaceInventoryItem -> createOffer -> publishOffer.
-import { auth } from '../../../../auth.js';
+import { getCurrentUser } from '../../../../lib/supabase/server.js';
 import { getConnection, ebayFetch } from '../../../../lib/ebay.js';
 
 export async function POST(req) {
-  const session = await auth();
-  if (!session?.user?.appUserId) {
+  const user = await getCurrentUser();
+  if (!user) {
     return Response.json({ error: 'Not signed in' }, { status: 401 });
   }
 
-  const connection = await getConnection(session.user.appUserId);
+  const connection = await getConnection(user.id);
   if (!connection || !connection.refresh_token) {
     return Response.json({ error: 'Connect your eBay account first at /settings/ebay' }, { status: 400 });
   }
